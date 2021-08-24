@@ -4594,5 +4594,6 @@ static SaveVMHandlers savevm_ram_handlers = {
 void ram_mig_init(void)
 {
     qemu_mutex_init(&XBZRLE.lock);
-    register_savevm_live("ram", 0, 4, &savevm_ram_handlers, &ram_state);
+    //register_savevm_live("ram", 0, 4, &savevm_ram_handlers, &ram_state);
+    assert(&savevm_ram_handlers != NULL);
 }

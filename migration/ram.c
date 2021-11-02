@@ -26,6 +26,8 @@
  * THE SOFTWARE.
  */
 
+#include <ppu_intrinsics.h>
+
 #include "qemu/osdep.h"
 #include "qemu/cutils.h"
 #include "qemu/bitops.h"
@@ -4097,6 +4099,23 @@ static int ram_resume_prepare(MigrationState *s, void *opaque)
     return 0;
 }
 
+static void ram_flush_thymesisflow(QEMUFile *f, void *opaque) {
+	const size_t CACHE_LINE_SIZE = 128;
+	RAMBlock *block;
+
+        RAMBLOCK_FOREACH_MIGRATABLE(block) {
+		for (size_t offset = 0; offset < block->used_length; offset += CACHE_LINE_SIZE) {
+			__dcbf(block->host + offset);
+		}
+	}
+	__sync();
+}
+
+static int ram_load_thymesisflow(QEMUFile *f, void *opaque, int version_id) {
+	/* do nothing */
+	return 0;
+}
+
 static SaveVMHandlers savevm_ram_handlers = {
     .save_setup = ram_save_setup,
     .save_live_iterate = ram_save_iterate,
@@ -4109,6 +4128,11 @@ static SaveVMHandlers savevm_ram_handlers = {
     .load_setup = ram_load_setup,
     .load_cleanup = ram_load_cleanup,
     .resume_prepare = ram_resume_prepare,
+};
+
+static SaveVMHandlers savevm_ram_handlers_thymesisflow = {
+	.save_state = ram_flush_thymesisflow,
+	.load_state = ram_load_thymesisflow,
 };
 
 static void ram_mig_ram_block_resized(RAMBlockNotifier *n, void *host,
@@ -4176,6 +4200,6 @@ void ram_mig_init(void)
     qemu_mutex_init(&XBZRLE.lock);
     assert(&savevm_ram_handlers != NULL);
     assert(&ram_mig_ram_notifier != NULL);
-    //register_savevm_live("ram", 0, 4, &savevm_ram_handlers, &ram_state);
+    register_savevm_live("ram", 0, 4, &savevm_ram_handlers_thymesisflow, &ram_state);
     //ram_block_notifier_add(&ram_mig_ram_notifier);
 }

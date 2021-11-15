@@ -26,7 +26,11 @@
  * THE SOFTWARE.
  */
 
-#include <ppu_intrinsics.h>
+//#include <ppu_intrinsics.h>
+//#include <sys/syscall.h>
+#define _GNU_SOURCE
+#include <unistd.h>
+#include <sys/mman.h>
 
 #include "qemu/osdep.h"
 #include "qemu/cutils.h"
@@ -4100,7 +4104,7 @@ static int ram_resume_prepare(MigrationState *s, void *opaque)
 }
 
 static void ram_flush_thymesisflow(QEMUFile *f, void *opaque) {
-	const size_t CACHE_LINE_SIZE = 128;
+    /*const size_t CACHE_LINE_SIZE = 128;
 	RAMBlock *block;
 
         RAMBLOCK_FOREACH_MIGRATABLE(block) {
@@ -4108,12 +4112,36 @@ static void ram_flush_thymesisflow(QEMUFile *f, void *opaque) {
 			__dcbf(block->host + offset);
 		}
 	}
-	__sync();
+    __sync();*/
+}
+
+static void thymesisflow_ram_move_thread(void *unused) {
+    RAMBlock *block;
+    size_t move_size = getpagesize();
+    size_t moved_blocks = 0;
+
+    RAMBLOCK_FOREACH_MIGRATABLE(block) {
+        int local_fd = memfd_create("locally moved VM RAM", 0);
+        ftruncate(local_fd, block->used_length);
+        printf("moveing RAM block of size %lu from thymesisflow\n", block->used_length);
+
+        for (size_t offset = 0; offset < block->used_length; offset += move_size) {
+            mprotect(block->host + offset, move_size, PROT_READ);
+            moved_blocks++;
+        }
+    }
+
+    printf("moved %lu RAM blocks from thymesisflow\n", moved_blocks);
 }
 
 static int ram_load_thymesisflow(QEMUFile *f, void *opaque, int version_id) {
-	/* do nothing */
-	return 0;
+    static QemuThread ram_move_thread;
+    qemu_thread_create(&ram_move_thread,
+                       "ram_move_thread",
+                       thymesisflow_ram_move_thread,
+                       NULL,
+                       QEMU_THREAD_DETACHED);
+    printf("started RAM moving thread");
 }
 
 static SaveVMHandlers savevm_ram_handlers = {

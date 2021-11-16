@@ -26,11 +26,6 @@
  * THE SOFTWARE.
  */
 
-//#include <ppu_intrinsics.h>
-//#include <sys/syscall.h>
-#define _GNU_SOURCE
-#include <unistd.h>
-#include <sys/mman.h>
 
 #include "qemu/osdep.h"
 #include "cpu.h"
@@ -57,6 +52,13 @@
 #include "qemu/rcu_queue.h"
 #include "migration/colo.h"
 #include "migration/block.h"
+
+
+//#include <ppu_intrinsics.h>
+//#include <sys/syscall.h>
+#include <unistd.h>
+#include <sys/mman.h>
+
 
 /***********************************************************/
 /* ram save/restore */
@@ -3028,23 +3030,78 @@ static void ram_flush_thymesisflow(QEMUFile *f, void *opaque) {
     __sync();*/
 }
 
-static void thymesisflow_ram_move_thread(void *unused) {
+static void *thymesisflow_ram_move_thread(void *unused) {
     RAMBlock *block;
     size_t move_size = getpagesize();
     size_t moved_blocks = 0;
+    //uint64_t uffd_ioctls;
+
+    /*int uffd_fd = uffd_create_fd(UFFD_FEATURE_MISSING_SHMEM, false);
+    if (uffd_fd < 0) {
+        printf("uffd_create_fd failed: %i\n", errno);
+        exit(1);
+    }*/
 
     RAMBLOCK_FOREACH_MIGRATABLE(block) {
         int local_fd = memfd_create("locally moved VM RAM", 0);
-        ftruncate(local_fd, block->used_length);
-        printf("moveing RAM block of size %lu from thymesisflow\n", block->used_length);
+        if (local_fd < 0) {
+            printf("memfd_create failed\n");
+            exit(1);
+        }
+
+        int result = ftruncate(local_fd, block->used_length);
+        if (result != 0) {
+            printf("ftruncate failed for local RAM\n");
+            exit(1);
+        }
+        printf("moving RAM block of size %lu from thymesisflow\n", block->used_length);
+
+        char *temp_map = mmap(NULL,
+                              block->used_length,
+                              PROT_READ|PROT_WRITE,
+                              MAP_SHARED,
+                              local_fd,
+                              0);
+        if (temp_map == MAP_FAILED) {
+            printf("temp mmap failed\n");
+            exit(1);
+        }
+
+        /*result = uffd_register_memory(uffd_fd,
+                                      block->host,
+                                      block->used_length,
+                                      UFFDIO_REGISTER_MODE_MISSING,
+                                      NULL);
+        if (result != 0) {
+            printf("uffd_register_memory failed: %i\n", errno);
+            exit(1);
+        }*/
 
         for (size_t offset = 0; offset < block->used_length; offset += move_size) {
-            mprotect(block->host + offset, move_size, PROT_READ);
-            moved_blocks++;
+            result = mprotect(block->host + offset, move_size, PROT_READ);
+            if (result != 0) {
+                printf("mprotect failed\n");
+                exit(1);
+            }
+
+            memcpy(temp_map + offset, block->host + offset, move_size);
+
+            char *fixed_map = mmap(block->host + offset,
+                                   move_size,
+                                   PROT_READ|PROT_WRITE,
+                                   MAP_SHARED|MAP_FIXED,
+                                   local_fd,
+                                   offset);
+            if (fixed_map == MAP_FAILED) {
+                printf("fixed mmap failed\n");
+                exit(1);
+            }
         }
+        moved_blocks++;
     }
 
     printf("moved %lu RAM blocks from thymesisflow\n", moved_blocks);
+    return NULL;
 }
 
 static int ram_load_thymesisflow(QEMUFile *f, void *opaque, int version_id) {
@@ -3054,7 +3111,8 @@ static int ram_load_thymesisflow(QEMUFile *f, void *opaque, int version_id) {
                        thymesisflow_ram_move_thread,
                        NULL,
                        QEMU_THREAD_DETACHED);
-    printf("started RAM moving thread");
+    printf("started RAM moving thread\n");
+    return 0;
 }
 
 static SaveVMHandlers savevm_ram_handlers = {

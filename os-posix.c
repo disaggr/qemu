@@ -46,6 +46,12 @@ static const char *chroot_dir;
 static int daemonize;
 static int daemon_pipe;
 
+static void handler(int sig, siginfo_t *si, void *unused)
+{
+    printf("Got SIGSEGV at address: 0x%lx\n",(long) si->si_addr);
+    printf("Implements the handler only\n");
+}
+
 void os_setup_early_signal_handling(void)
 {
     struct sigaction act;
@@ -53,6 +59,14 @@ void os_setup_early_signal_handling(void)
     act.sa_flags = 0;
     act.sa_handler = SIG_IGN;
     sigaction(SIGPIPE, &act, NULL);
+
+    act.sa_flags = SA_SIGINFO;
+    sigemptyset(&act.sa_mask);
+    act.sa_sigaction = handler;
+    if (sigaction(SIGSEGV, &act, NULL) != 0) {
+        printf("sigaction SIGSEGV failed\n");
+        exit(EXIT_FAILURE);
+    }
 }
 
 static void termsig_handler(int signal, siginfo_t *info, void *c)

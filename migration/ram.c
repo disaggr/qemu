@@ -3098,9 +3098,37 @@ static void *thymesisflow_ram_move_thread(void *unused) {
             }
         }
         moved_blocks++;
+
+	if (munmap(temp_map, block->used_length) != 0) {
+		printf("munmap failed\n");
+		exit(1);
+	}
     }
 
     printf("moved %lu RAM blocks from thymesisflow\n", moved_blocks);
+
+
+    while(1) {
+    RAMBLOCK_FOREACH_MIGRATABLE(block) {
+
+	int result;
+
+        for (size_t offset = 0; offset < block->used_length; offset += move_size) {
+            result = mprotect(block->host + offset, move_size, PROT_READ);
+            if (result != 0) {
+                printf("mprotect failed\n");
+                exit(1);
+            }
+
+            usleep(3);
+
+            result = mprotect(block->host + offset, move_size, PROT_READ|PROT_WRITE);
+            if (result != 0) {
+                printf("mprotect failed\n");
+                exit(1);
+            }
+        }
+    }}
     return NULL;
 }
 

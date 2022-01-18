@@ -36,6 +36,7 @@
 #include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "qemu/cutils.h"
+#include "migration/ram.h"
 
 #ifdef CONFIG_LINUX
 #include <sys/prctl.h>
@@ -46,10 +47,14 @@ static const char *chroot_dir;
 static int daemonize;
 static int daemon_pipe;
 
-static void handler(int sig, siginfo_t *si, void *unused)
+static void segv_handler(int signal, siginfo_t *info, void *c)
 {
-    printf("Got SIGSEGV at address: 0x%lx\n",(long) si->si_addr);
-    printf("Implements the handler only\n");
+    if (!ram_thymesisflow_may_cause_fault()) {
+        printf("Segmenation fault accessing: 0x%lx, but RAMis not currently being moved."
+               " This is a bug.\n",
+               (unsigned long)info->si_addr);
+        exit(EXIT_FAILURE);
+    }
 }
 
 void os_setup_early_signal_handling(void)
@@ -62,7 +67,7 @@ void os_setup_early_signal_handling(void)
 
     act.sa_flags = SA_SIGINFO;
     sigemptyset(&act.sa_mask);
-    act.sa_sigaction = handler;
+    act.sa_sigaction = segv_handler;
     if (sigaction(SIGSEGV, &act, NULL) != 0) {
         printf("sigaction SIGSEGV failed\n");
         exit(EXIT_FAILURE);

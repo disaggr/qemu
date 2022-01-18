@@ -74,4 +74,6 @@ int ram_dirty_bitmap_reload(MigrationState *s, RAMBlock *rb);
 int colo_init_ram_cache(void);
 void colo_release_ram_cache(void);
 
+bool ram_thymesisflow_may_cause_fault(void);
+
 #endif

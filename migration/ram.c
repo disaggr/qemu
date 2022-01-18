@@ -4585,6 +4585,38 @@ static int ram_resume_prepare(MigrationState *s, void *opaque)
     return 0;
 }
 
+/* Moving pages from the Thymesisflow device will temporarily map them as read-only. This may
+ * cause otherwise fatal failures like SIGSEGV. The following function should be used by the
+ * respective handlers to check if the failure may be caused by the page moving. */
+#define RAM_THYMESISFLOW_NOT_MOVING 1
+#define RAM_THYMESISFLOW_CURRENTLY_MOVING 2
+#define RAM_THYMESISFLOW_WAS_MOVED 3
+int ram_thymesisflow_moving_state = RAM_THYMESISFLOW_NOT_MOVING;
+
+bool ram_thymesisflow_may_cause_fault(void) {
+    int moving_state = __atomic_load_n(&ram_thymesisflow_moving_state, __ATOMIC_SEQ_CST);
+
+    switch (moving_state) {
+    case RAM_THYMESISFLOW_NOT_MOVING:
+        return false;
+    case RAM_THYMESISFLOW_CURRENTLY_MOVING:
+        return true;
+    case RAM_THYMESISFLOW_WAS_MOVED:
+        /* There may be one fault caused by the moving that is handled after the moving is finished.
+         * In this case return true, but reset the variable since anything after that is definedly a
+         * bug. */
+        __atomic_compare_exchange_n(&ram_thymesisflow_moving_state,
+                                    &moving_state,
+                                    RAM_THYMESISFLOW_NOT_MOVING,
+                                    false,
+                                    __ATOMIC_SEQ_CST,
+                                    __ATOMIC_SEQ_CST);
+        return true;
+    }
+    printf("Unexpected value for ram_thymesisflow_moving_state\n");
+    exit(EXIT_FAILURE);
+}
+
 static void ram_flush_thymesisflow(QEMUFile *f, void *opaque) {
     /*const size_t CACHE_LINE_SIZE = 128;
 	RAMBlock *block;
@@ -4602,6 +4634,10 @@ static void *thymesisflow_ram_move_thread(void *unused) {
     size_t move_size = getpagesize();
     size_t moved_blocks = 0;
     //uint64_t uffd_ioctls;
+
+    __atomic_store_n(&ram_thymesisflow_moving_state,
+                     RAM_THYMESISFLOW_CURRENTLY_MOVING,
+                     __ATOMIC_SEQ_CST);
 
     /*int uffd_fd = uffd_create_fd(UFFD_FEATURE_MISSING_SHMEM, false);
     if (uffd_fd < 0) {
@@ -4671,6 +4707,10 @@ static void *thymesisflow_ram_move_thread(void *unused) {
 		exit(1);
 	}
     }
+
+    __atomic_store_n(&ram_thymesisflow_moving_state,
+                     RAM_THYMESISFLOW_WAS_MOVED,
+                     __ATOMIC_SEQ_CST);
 
     printf("moved %lu RAM blocks from thymesisflow\n", moved_blocks);
 

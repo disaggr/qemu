@@ -86,4 +86,6 @@ void ram_write_tracking_prepare(void);
 int ram_write_tracking_start(void);
 void ram_write_tracking_stop(void);
 
+bool ram_thymesisflow_may_cause_fault(void);
+
 #endif

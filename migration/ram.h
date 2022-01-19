@@ -64,6 +64,7 @@ bool ramblock_recv_bitmap_test_byte_offset(RAMBlock *rb, uint64_t byte_offset);
 void ramblock_recv_bitmap_set(RAMBlock *rb, void *host_addr);
 void ramblock_recv_bitmap_set_range(RAMBlock *rb, void *host_addr, size_t nr);
 
-bool ram_thymesisflow_may_cause_fault(void);
+bool ram_migration_may_cause_fault(void);
+int ram_init_migration_type(const char *optarg, Error **errp);
 
 #endif

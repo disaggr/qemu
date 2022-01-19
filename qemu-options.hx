@@ -3425,6 +3425,17 @@ applicable to MAC and Windows platform, and thus does not conflict with
 KVM.
 ETEXI
 
+DEF("migration-type", HAS_ARG, QEMU_OPTION_migration_type, \
+    "-migration-type configure the disaggregated memory migration prototype\n", QEMU_ARCH_ALL)
+SRST
+``-migration-type type``
+    Configure the disaggregated memory migration prototype. Possible
+    values for type
+    - ``normal``: do not use disaggregated memory prototype
+    - ``disaggregated``: assume memory backend is on source node, but accessible on destination during a post-copy migration
+    - ``cpu-only``: same as disaggregated, but migrates only the execution and leaves the RAM on source node
+ERST
+
 DEF("xen-domid", HAS_ARG, QEMU_OPTION_xen_domid,
     "-xen-domid id   specify xen guest domain id\n", QEMU_ARCH_ALL)
 DEF("xen-create", 0, QEMU_OPTION_xen_create,

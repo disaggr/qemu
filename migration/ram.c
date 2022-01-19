@@ -68,6 +68,27 @@
 #include <sys/mman.h>
 
 
+enum MigrationType {
+    NORMAL, DISAGGRAGATED, CPU_ONLY
+};
+enum MigrationType migration_type = NORMAL;
+
+int ram_init_migration_type(const char *optarg, Error **errp) {
+    if (strcmp("normal", optarg) == 0) {
+        migration_type = NORMAL;
+        return 0;
+    } else if (strcmp("disaggregated", optarg) == 0) {
+        migration_type = DISAGGRAGATED;
+        return 0;
+    } else if (strcmp("cpu-only", optarg) == 0) {
+        migration_type = CPU_ONLY;
+        return 0;
+    } else {
+        error_setg(errp, "Invalid migration type: %s", optarg);
+        return 1;
+    }
+}
+
 /***********************************************************/
 /* ram save/restore */
 
@@ -4108,62 +4129,51 @@ static int ram_resume_prepare(MigrationState *s, void *opaque)
 /* Moving pages from the Thymesisflow device will temporarily map them as read-only. This may
  * cause otherwise fatal failures like SIGSEGV. The following function should be used by the
  * respective handlers to check if the failure may be caused by the page moving. */
-#define RAM_THYMESISFLOW_NOT_MOVING 1
-#define RAM_THYMESISFLOW_CURRENTLY_MOVING 2
-#define RAM_THYMESISFLOW_WAS_MOVED 3
-int ram_thymesisflow_moving_state = RAM_THYMESISFLOW_NOT_MOVING;
+#define RAM_DISAGGREGATED_NOT_MOVING 1
+#define RAM_DISAGGREGATED_CURRENTLY_MOVING 2
+#define RAM_DISAGGREGATED_WAS_MOVED 3
+int ram_disaggregated_moving_state = RAM_DISAGGREGATED_NOT_MOVING;
 
-bool ram_thymesisflow_may_cause_fault(void) {
-    int moving_state = __atomic_load_n(&ram_thymesisflow_moving_state, __ATOMIC_SEQ_CST);
+bool ram_migration_may_cause_fault(void) {
+    if (migration_type != DISAGGRAGATED) {
+        return false;
+    }
+
+    int moving_state = __atomic_load_n(&ram_disaggregated_moving_state, __ATOMIC_SEQ_CST);
 
     switch (moving_state) {
-    case RAM_THYMESISFLOW_NOT_MOVING:
+    case RAM_DISAGGREGATED_NOT_MOVING:
         return false;
-    case RAM_THYMESISFLOW_CURRENTLY_MOVING:
+    case RAM_DISAGGREGATED_CURRENTLY_MOVING:
         return true;
-    case RAM_THYMESISFLOW_WAS_MOVED:
+    case RAM_DISAGGREGATED_WAS_MOVED:
         /* There may be one fault caused by the moving that is handled after the moving is finished.
          * In this case return true, but reset the variable since anything after that is definedly a
          * bug. */
-        __atomic_compare_exchange_n(&ram_thymesisflow_moving_state,
+        __atomic_compare_exchange_n(&ram_disaggregated_moving_state,
                                     &moving_state,
-                                    RAM_THYMESISFLOW_NOT_MOVING,
+                                    RAM_DISAGGREGATED_NOT_MOVING,
                                     false,
                                     __ATOMIC_SEQ_CST,
                                     __ATOMIC_SEQ_CST);
         return true;
     }
-    printf("Unexpected value for ram_thymesisflow_moving_state\n");
+    printf("Unexpected value for ram_disaggregated_moving_state\n");
     exit(EXIT_FAILURE);
 }
 
-static void ram_flush_thymesisflow(QEMUFile *f, void *opaque) {
-    /*const size_t CACHE_LINE_SIZE = 128;
-	RAMBlock *block;
-
-        RAMBLOCK_FOREACH_MIGRATABLE(block) {
-		for (size_t offset = 0; offset < block->used_length; offset += CACHE_LINE_SIZE) {
-			__dcbf(block->host + offset);
-		}
-	}
-    __sync();*/
+static void ram_save_disaggregated(QEMUFile *f, void *opaque) {
+    /* do nothing */
 }
 
-static void *thymesisflow_ram_move_thread(void *unused) {
+static void *disaggregated_ram_move_thread(void *unused) {
     RAMBlock *block;
     size_t move_size = getpagesize();
     size_t moved_blocks = 0;
-    //uint64_t uffd_ioctls;
 
-    __atomic_store_n(&ram_thymesisflow_moving_state,
-                     RAM_THYMESISFLOW_CURRENTLY_MOVING,
+    __atomic_store_n(&ram_disaggregated_moving_state,
+                     RAM_DISAGGREGATED_CURRENTLY_MOVING,
                      __ATOMIC_SEQ_CST);
-
-    /*int uffd_fd = uffd_create_fd(UFFD_FEATURE_MISSING_SHMEM, false);
-    if (uffd_fd < 0) {
-        printf("uffd_create_fd failed: %i\n", errno);
-        exit(1);
-    }*/
 
     RAMBLOCK_FOREACH_MIGRATABLE(block) {
         int local_fd = memfd_create("locally moved VM RAM", 0);
@@ -4177,7 +4187,7 @@ static void *thymesisflow_ram_move_thread(void *unused) {
             printf("ftruncate failed for local RAM\n");
             exit(1);
         }
-        printf("moving RAM block of size %lu from thymesisflow\n", block->used_length);
+        printf("moving RAM block of size %lu from disaggregated memory\n", block->used_length);
 
         char *temp_map = mmap(NULL,
                               block->used_length,
@@ -4189,16 +4199,6 @@ static void *thymesisflow_ram_move_thread(void *unused) {
             printf("temp mmap failed\n");
             exit(1);
         }
-
-        /*result = uffd_register_memory(uffd_fd,
-                                      block->host,
-                                      block->used_length,
-                                      UFFDIO_REGISTER_MODE_MISSING,
-                                      NULL);
-        if (result != 0) {
-            printf("uffd_register_memory failed: %i\n", errno);
-            exit(1);
-        }*/
 
         for (size_t offset = 0; offset < block->used_length; offset += move_size) {
             result = mprotect(block->host + offset, move_size, PROT_READ);
@@ -4228,11 +4228,11 @@ static void *thymesisflow_ram_move_thread(void *unused) {
 	}
     }
 
-    __atomic_store_n(&ram_thymesisflow_moving_state,
-                     RAM_THYMESISFLOW_WAS_MOVED,
+    __atomic_store_n(&ram_disaggregated_moving_state,
+                     RAM_DISAGGREGATED_WAS_MOVED,
                      __ATOMIC_SEQ_CST);
 
-    printf("moved %lu RAM blocks from thymesisflow\n", moved_blocks);
+    printf("moved %lu RAM blocks from disaggregated memory\n", moved_blocks);
 
 
     while(1) {
@@ -4259,14 +4259,16 @@ static void *thymesisflow_ram_move_thread(void *unused) {
     return NULL;
 }
 
-static int ram_load_thymesisflow(QEMUFile *f, void *opaque, int version_id) {
-    static QemuThread ram_move_thread;
-    qemu_thread_create(&ram_move_thread,
-                       "ram_move_thread",
-                       thymesisflow_ram_move_thread,
-                       NULL,
-                       QEMU_THREAD_DETACHED);
-    printf("started RAM moving thread\n");
+static int ram_load_disaggregated(QEMUFile *f, void *opaque, int version_id) {
+    if (migration_type == DISAGGRAGATED) {
+        static QemuThread ram_move_thread;
+        qemu_thread_create(&ram_move_thread,
+                           "ram_move_thread",
+                           disaggregated_ram_move_thread,
+                           NULL,
+                           QEMU_THREAD_DETACHED);
+        printf("started RAM moving thread\n");
+    }
     return 0;
 }
 
@@ -4284,9 +4286,9 @@ static SaveVMHandlers savevm_ram_handlers = {
     .resume_prepare = ram_resume_prepare,
 };
 
-static SaveVMHandlers savevm_ram_handlers_thymesisflow = {
-	.save_state = ram_flush_thymesisflow,
-	.load_state = ram_load_thymesisflow,
+static SaveVMHandlers savevm_ram_handlers_disaggregated = {
+    .save_state = ram_save_disaggregated,
+    .load_state = ram_load_disaggregated,
 };
 
 static void ram_mig_ram_block_resized(RAMBlockNotifier *n, void *host,
@@ -4352,8 +4354,10 @@ static RAMBlockNotifier ram_mig_ram_notifier = {
 void ram_mig_init(void)
 {
     qemu_mutex_init(&XBZRLE.lock);
-    assert(&savevm_ram_handlers != NULL);
-    assert(&ram_mig_ram_notifier != NULL);
-    register_savevm_live("ram", 0, 4, &savevm_ram_handlers_thymesisflow, &ram_state);
-    //ram_block_notifier_add(&ram_mig_ram_notifier);
+    if (migration_type == NORMAL) {
+        register_savevm_live("ram", 0, 4, &savevm_ram_handlers, &ram_state);
+        ram_block_notifier_add(&ram_mig_ram_notifier);
+    } else {
+        register_savevm_live("ram", 0, 4, &savevm_ram_handlers_disaggregated, &ram_state);
+    }
 }

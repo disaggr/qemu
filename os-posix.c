@@ -36,7 +36,9 @@
 #include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "qemu/cutils.h"
+#ifdef IN_EMULATOR
 #include "migration/ram.h"
+#endif
 
 #ifdef CONFIG_LINUX
 #include <sys/prctl.h>
@@ -49,12 +51,16 @@ static int daemon_pipe;
 
 static void segv_handler(int signal, siginfo_t *info, void *c)
 {
+#ifdef IN_EMULATOR
     if (!ram_thymesisflow_may_cause_fault()) {
+#endif
         printf("Segmenation fault accessing: 0x%lx, but RAMis not currently being moved."
                " This is a bug.\n",
                (unsigned long)info->si_addr);
         exit(EXIT_FAILURE);
+#ifdef IN_EMULATOR
     }
+#endif
 }
 
 void os_setup_early_signal_handling(void)

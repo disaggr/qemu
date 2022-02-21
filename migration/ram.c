@@ -66,6 +66,7 @@
 //#include <sys/syscall.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <sys/time.h>
 
 
 /***********************************************************/
@@ -124,6 +125,11 @@ static void XBZRLE_cache_unlock(void)
     }
 }
 
+static long double get_unixtime(void){
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	return (long double)tv.tv_sec+(long double)(tv.tv_usec)/1e6;
+}
 /**
  * xbzrle_cache_resize: resize the xbzrle cache
  *
@@ -4105,6 +4111,8 @@ static int ram_resume_prepare(MigrationState *s, void *opaque)
     return 0;
 }
 
+
+
 static void ram_flush_thymesisflow(QEMUFile *f, void *opaque) {
     /*const size_t CACHE_LINE_SIZE = 128;
 	RAMBlock *block;
@@ -4141,7 +4149,7 @@ static void *thymesisflow_ram_move_thread(void *unused) {
             printf("ftruncate failed for local RAM\n");
             exit(1);
         }
-        printf("moving RAM block of size %lu from thymesisflow\n", block->used_length);
+        printf("[%Lf] moving RAM block of size %lu from thymesisflow\n", get_unixtime(),block->used_length);
 
         char *temp_map = mmap(NULL,
                               block->used_length,
@@ -4192,7 +4200,7 @@ static void *thymesisflow_ram_move_thread(void *unused) {
 	}
     }
 
-    printf("moved %lu RAM blocks from thymesisflow\n", moved_blocks);
+    printf("[%Lf] moved %lu RAM blocks from thymesisflow\n", get_unixtime() ,moved_blocks);
 
 
     while(1) {
@@ -4226,7 +4234,7 @@ static int ram_load_thymesisflow(QEMUFile *f, void *opaque, int version_id) {
                        thymesisflow_ram_move_thread,
                        NULL,
                        QEMU_THREAD_DETACHED);
-    printf("started RAM moving thread\n");
+    printf("[%Lf] started RAM moving thread\n",get_unixtime());
     return 0;
 }
 

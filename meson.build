@@ -2290,7 +2290,8 @@ foreach target : target_dirs
                link_language: link_language,
                link_depends: [block_syms, qemu_syms] + exe.get('link_depends', []),
                link_args: link_args,
-               gui_app: exe['gui'])
+               gui_app: exe['gui'],
+               cpp_args: '-DIN_EMULATOR=1')
 
     if exe_sign
       emulators += {exe['name'] : custom_target(exe['name'],

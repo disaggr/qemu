@@ -3153,28 +3153,32 @@ static void *disaggregated_ram_move_thread(void *unused) {
 
     printf("[%Lf] moved %lu RAM blocks from disaggregated memory\n", get_unixtime(), moved_blocks);
 
-
+// TODO: Find a better ifdef or other way to make this configurable as fault injection
+#ifdef IN_EMULATOR
     while(1) {
-    RAMBLOCK_FOREACH_MIGRATABLE(block) {
+        RAMBLOCK_FOREACH_MIGRATABLE(block) {
 
-	int result;
+	    int result;
 
-        for (size_t offset = 0; offset < block->used_length; offset += move_size) {
-            result = mprotect(block->host + offset, move_size, PROT_READ);
-            if (result != 0) {
-                printf("mprotect failed\n");
-                exit(1);
-            }
+            for (size_t offset = 0; offset < block->used_length; offset += move_size) {
+                result = mprotect(block->host + offset, move_size, PROT_READ);
+                if (result != 0) {
+                    printf("mprotect failed\n");
+                    exit(1);
+                }
 
-            usleep(3);
+                usleep(3);
 
-            result = mprotect(block->host + offset, move_size, PROT_READ|PROT_WRITE);
-            if (result != 0) {
-                printf("mprotect failed\n");
-                exit(1);
+                result = mprotect(block->host + offset, move_size, PROT_READ|PROT_WRITE);
+                if (result != 0) {
+                    printf("mprotect failed\n");
+                    exit(1);
+                }
             }
         }
-    }}
+    }
+#endif
+
     return NULL;
 }
 

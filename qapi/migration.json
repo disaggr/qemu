@@ -1398,6 +1398,30 @@
 { 'command': 'migrate-continue', 'data': {'state': 'MigrationStatus'} }
 
 ##
+# @migrate_set_speed:
+#
+# Set maximum speed for migration.
+#
+# @value: maximum speed in bytes per second.
+#
+# Features:
+# @deprecated: This command is deprecated.  Use
+#              'migrate-set-parameters' instead.
+#
+# Returns: nothing on success
+#
+# Since: 0.14
+#
+# Example:
+#
+# -> { "execute": "migrate_set_speed", "arguments": { "value": 1024 } }
+# <- { "return": {} }
+#
+##
+{ 'command': 'migrate_set_speed', 'data': {'value': 'int'},
+	  'features': [ 'deprecated' ] }
+
+##
 # @migrate:
 #
 # Migrates the current running guest to another Virtual Machine.

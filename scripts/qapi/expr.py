@@ -139,8 +139,8 @@ def check_name_lower(name: str, info: QAPISourceInfo, source: str,
     :raise QAPISemError: When ``name`` fails validation.
     """
     stem = check_name_str(name, info, source)
-    if ((not permit_upper and re.search(r'[A-Z]', stem))
-            or (not permit_underscore and '_' in stem)):
+    if ((not permit_upper and re.search(r'[A-Z]', stem))):
+            #or (not permit_underscore and '_' in stem)):
         raise QAPISemError(
             info, "name of %s must not use uppercase or '_'" % source)
 

@@ -2311,6 +2311,16 @@ void qmp_migrate_continue(MigrationStatus state, Error **errp)
     qemu_sem_post(&s->pause_sem);
 }
 
+void qmp_migrate_set_speed(int64_t value, Error **errp)
+{
+    MigrateSetParameters p = {
+            .has_max_bandwidth = true,
+            .max_bandwidth = value,
+        };
+
+        qmp_migrate_set_parameters(&p, errp);
+}
+
 bool migrate_release_ram(void)
 {
     MigrationState *s;

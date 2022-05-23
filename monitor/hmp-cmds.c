@@ -1220,6 +1220,15 @@ void hmp_migrate_pause(Monitor *mon, const QDict *qdict)
     hmp_handle_error(mon, err);
 }
 
+/* Kept for backwards compatibility */
+void hmp_migrate_set_speed(Monitor *mon, const QDict *qdict)
+{
+    Error *err = NULL;
+
+    int64_t value = qdict_get_int(qdict, "value");
+    qmp_migrate_set_speed(value, &err);
+        hmp_handle_error(mon, err);
+}
 
 void hmp_migrate_set_capability(Monitor *mon, const QDict *qdict)
 {

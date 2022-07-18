@@ -4266,6 +4266,8 @@ static void *disaggregated_ram_move_thread(void *unused) {
     }
 #endif
 
+    printf("[%Lf] Disaggregated Zero-Copy Migration completed.\n",get_unixtime());
+
     return NULL;
 }
 
@@ -4278,6 +4280,8 @@ static int ram_load_disaggregated(QEMUFile *f, void *opaque, int version_id) {
                            NULL,
                            QEMU_THREAD_DETACHED);
         printf("[%Lf] started RAM moving thread\n",get_unixtime());
+    } else {
+        printf("[%Lf] CPU-Only Zero-Copy Migration completed.\n",get_unixtime());
     }
     return 0;
 }
